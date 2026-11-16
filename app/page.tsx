@@ -1,6 +1,7 @@
 import HeroArt from "@/components/HeroArt";
 import Link from "next/link";
 import { TOOLS } from "@/lib/tools";
+import ToolIcon from "@/components/ToolIcon";
 
 
 export default function Home() {
@@ -23,7 +24,7 @@ export default function Home() {
         {TOOLS.map((t) => (
           <Link key={t.href} href={t.href} className="card tool-card">
             <div className="icon" aria-hidden>
-              {t.icon}
+              <ToolIcon name={t.icon} size={34} />
             </div>
             <h3>{t.title}</h3>
             <p>{t.body}</p>

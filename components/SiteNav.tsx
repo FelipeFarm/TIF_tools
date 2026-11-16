@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { TOOLS } from "@/lib/tools";
 import { BRAND } from "@/lib/config";
+import ToolIcon from "./ToolIcon";
 
 export default function SiteNav() {
   const pathname = usePathname();
@@ -74,7 +75,7 @@ export default function SiteNav() {
               <li key={t.href}>
                 <Link href={t.href} className="mobile-item" aria-current={isActive(t.href) ? "page" : undefined}>
                   <span className="mobile-icon" aria-hidden>
-                    {t.icon}
+                    <ToolIcon name={t.icon} size={28} />
                   </span>
                   <span>
                     <span className="mobile-title">{t.title}</span>
