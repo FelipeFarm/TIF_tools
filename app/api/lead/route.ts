@@ -1,5 +1,3 @@
-// Webflow Cloud requires API routes to run on the Edge runtime.
-export const runtime = "edge";
 
 const TOOLS = new Set(["seo-plan-picker", "ad-budget-estimator", "website-grader"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -76,6 +76,6 @@ Copy `.env.example` to `.env.local` to test the GHL webhook locally.
 
 ## Notes
 
-- API routes (`/api/lead`, `/api/grade`) use the Edge runtime, as Webflow Cloud requires.
+- API routes (`/api/lead`, `/api/grade`) use the default Node.js runtime. Don't add `export const runtime = "edge"`: with Next.js 16 on Webflow Cloud it makes every API route return a 500.
 - The grader blocks private/internal addresses and only checks the homepage of public sites. Some sites block automated checks and will show a friendly error.
 - Bandwidth from the app counts toward the TIF site's usage. Check the **Usage** tab after launch.

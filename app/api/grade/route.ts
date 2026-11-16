@@ -1,5 +1,3 @@
-// Webflow Cloud requires API routes to run on the Edge runtime.
-export const runtime = "edge";
 
 type Status = "pass" | "warn" | "fail";
 interface Check {

@@ -40,7 +40,7 @@ export default function LeadForm({ tool, heading, sub, cta, details, defaultWebs
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      if (!res.ok) throw new Error(data.error || "We couldn't send that right now. Please try again.");
       setState("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
