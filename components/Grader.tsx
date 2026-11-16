@@ -90,7 +90,7 @@ export default function Grader() {
               <div
                 className="score"
                 style={{
-                  background: `conic-gradient(${scoreColor(result.score)} ${result.score * 3.6}deg, var(--bg-2) 0)`,
+                  background: `conic-gradient(${scoreColor(result.score)} ${result.score * 3.6}deg, #eeeeee 0)`,
                 }}
               >
                 <div
@@ -98,7 +98,7 @@ export default function Grader() {
                     position: "absolute",
                     inset: 10,
                     borderRadius: "50%",
-                    background: "var(--card)",
+                    background: "#ffffff",
                     display: "grid",
                     placeItems: "center",
                     textAlign: "center",

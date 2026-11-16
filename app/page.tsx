@@ -24,15 +24,19 @@ const tools = [
 export default function Home() {
   return (
     <>
-      <section className="hero">
+      <section className="hero-band">
+        <div className="wrap">
         <span className="eyebrow">Free tools</span>
-        <h1>Grow smarter. Start with the numbers.</h1>
+        <h1>
+            Grow smarter. Start with <em>the numbers.</em>
+          </h1>
         <p className="lede">
           Three free tools from The Idea Farm to help you plan your SEO, budget your ads and see how your website
           stacks up. No sign-up required.
         </p>
+        </div>
       </section>
-      <section className="grid3">
+      <section className="wrap content grid3">
         {tools.map((t) => (
           <Link key={t.href} href={t.href} className="card tool-card">
             <div className="icon" aria-hidden>

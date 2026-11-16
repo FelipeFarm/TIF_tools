@@ -9,15 +9,19 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <>
-      <section className="hero">
+      <section className="hero-band">
+        <div className="wrap">
         <span className="eyebrow">Website Grader</span>
         <h1>How does your website score?</h1>
         <p className="lede">
           Enter your address for an instant check-up on SEO basics, mobile readiness, speed and security. It takes
           about 10 seconds.
         </p>
+        </div>
       </section>
-      <Grader />
+      <div className="wrap content">
+        <Grader />
+      </div>
     </>
   );
 }
