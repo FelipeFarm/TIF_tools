@@ -1,3 +1,4 @@
+import HeroArt from "@/components/HeroArt";
 import type { Metadata } from "next";
 import AdEstimator from "@/components/AdEstimator";
 
@@ -11,6 +12,7 @@ export default function Page() {
   return (
     <>
       <section className="hero-band">
+        <HeroArt />
         <div className="wrap">
         <span className="eyebrow">Ad Budget Estimator</span>
         <h1>What should you spend on ads?</h1>

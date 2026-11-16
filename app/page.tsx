@@ -1,30 +1,13 @@
+import HeroArt from "@/components/HeroArt";
 import Link from "next/link";
+import { TOOLS } from "@/lib/tools";
 
-const tools = [
-  {
-    href: "/seo-plan-picker",
-    icon: "🌱",
-    title: "SEO Plan Picker",
-    body: "Answer 6 quick questions and see which SEO plan fits your business: Starter, Growth or Authority.",
-  },
-  {
-    href: "/ad-budget-estimator",
-    icon: "📈",
-    title: "Ad Budget Estimator",
-    body: "See a ballpark Google, Meta and Local Services Ads budget for your industry, and the leads it could bring in.",
-  },
-  {
-    href: "/website-grader",
-    icon: "🔍",
-    title: "Website Grader",
-    body: "Enter your URL for an instant check-up on SEO basics, mobile readiness, speed and security.",
-  },
-];
 
 export default function Home() {
   return (
     <>
       <section className="hero-band">
+        <HeroArt />
         <div className="wrap">
         <span className="eyebrow">Free tools</span>
         <h1>
@@ -37,7 +20,7 @@ export default function Home() {
         </div>
       </section>
       <section className="wrap content grid3">
-        {tools.map((t) => (
+        {TOOLS.map((t) => (
           <Link key={t.href} href={t.href} className="card tool-card">
             <div className="icon" aria-hidden>
               {t.icon}

@@ -1,3 +1,4 @@
+import HeroArt from "@/components/HeroArt";
 import type { Metadata } from "next";
 import Grader from "@/components/Grader";
 
@@ -10,6 +11,7 @@ export default function Page() {
   return (
     <>
       <section className="hero-band">
+        <HeroArt />
         <div className="wrap">
         <span className="eyebrow">Website Grader</span>
         <h1>How does your website score?</h1>
