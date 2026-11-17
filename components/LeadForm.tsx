@@ -11,9 +11,25 @@ interface Props {
   /** Tool answers/results sent along so the Account Lead has context in GHL */
   details: Record<string, unknown>;
   defaultWebsite?: string;
+  /** Called after a successful submit (e.g. to unlock gated results) */
+  onSuccess?: () => void;
+  successTitle?: string;
+  successBody?: string;
+  id?: string;
 }
 
-export default function LeadForm({ tool, heading, sub, cta, details, defaultWebsite = "" }: Props) {
+export default function LeadForm({
+  tool,
+  heading,
+  sub,
+  cta,
+  details,
+  defaultWebsite = "",
+  onSuccess,
+  successTitle = "Thanks, we got it!",
+  successBody = "Someone from our team will reach out within one business day. Want to skip the wait?",
+  id,
+}: Props) {
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -42,6 +58,7 @@ export default function LeadForm({ tool, heading, sub, cta, details, defaultWebs
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "We couldn't send that right now. Please try again.");
       setState("done");
+      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setState("error");
@@ -50,12 +67,10 @@ export default function LeadForm({ tool, heading, sub, cta, details, defaultWebs
 
   if (state === "done") {
     return (
-      <div className="card mt">
+      <div className="card mt" id={id}>
         <div className="success">
-          <h3>Thanks, we got it!</h3>
-          <p style={{ margin: "0 0 14px" }}>
-            Someone from our team will reach out within one business day. Want to skip the wait?
-          </p>
+          <h3>{successTitle}</h3>
+          <p style={{ margin: "0 0 14px" }}>{successBody}</p>
           <a className="btn" href={BOOKING_URL} target="_top">
             Book a call now
           </a>
@@ -65,7 +80,7 @@ export default function LeadForm({ tool, heading, sub, cta, details, defaultWebs
   }
 
   return (
-    <form className="card mt" onSubmit={onSubmit}>
+    <form className="card mt" onSubmit={onSubmit} id={id}>
       <h2>{heading}</h2>
       <p className="lede" style={{ fontSize: 16, marginBottom: 22 }}>
         {sub}

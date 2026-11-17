@@ -17,7 +17,7 @@ export const TOOLS = [
     href: "/website-grader",
     icon: "grader",
     title: "Website Grader",
-    short: "Score your site in 10 seconds",
-    body: "Enter your URL for an instant check-up on SEO basics, mobile readiness, speed and security.",
+    short: "Score your site vs. a competitor",
+    body: "Get a free score with Google's speed test, an SEO check-up and a Google Business Profile lookup. Compare against a competitor.",
   },
 ] as const;
