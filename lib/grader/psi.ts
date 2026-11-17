@@ -38,15 +38,23 @@ export function parsePsi(json: any): SpeedData | null {
 /** Google's lab score swings a lot between runs (we've seen 44 and 78 for the same page minutes apart),
  *  so run it several times at once and report the median run, like Google recommends. */
 export const PSI_RUNS = 3;
+/** Points between the best and worst run above which we call the result noisy */
+export const NOISY_SPREAD = 15;
 export async function runPsi(url: string, apiKey?: string, strategy: "mobile" | "desktop" = "mobile"): Promise<{ data: SpeedData | null; error?: string }> {
-  const results = await Promise.all(
-    Array.from({ length: PSI_RUNS }, (_, i) => new Promise((r) => setTimeout(r, i * 1500)).then(() => runPsiOnce(url, apiKey, strategy))),
-  );
-  const ok = results.map((r) => r.data).filter((d): d is SpeedData => !!d);
+  const batch = (n: number) =>
+    Promise.all(Array.from({ length: n }, (_, i) => new Promise((r) => setTimeout(r, i * 1500)).then(() => runPsiOnce(url, apiKey, strategy))));
+  const results = await batch(PSI_RUNS);
+  let ok = results.map((r) => r.data).filter((d): d is SpeedData => !!d);
   if (!ok.length) return { data: null, error: results[0].error };
+  // Runs disagree a lot (e.g. 64, 64, 97)? Google's test was noisy: take 2 more runs before picking the median
+  const spread = (xs: SpeedData[]) => Math.max(...xs.map((d) => d.performance)) - Math.min(...xs.map((d) => d.performance));
+  if (ok.length < 2 || spread(ok) > NOISY_SPREAD) {
+    const more = (await batch(2)).map((r) => r.data).filter((d): d is SpeedData => !!d);
+    ok = [...ok, ...more];
+  }
   ok.sort((a, b) => a.performance - b.performance);
   const median = ok[Math.floor((ok.length - 1) / 2)];
-  return { data: { ...median, runs: ok.map((d) => d.performance) } };
+  return { data: { ...median, runs: ok.map((d) => d.performance), noisy: spread(ok) > NOISY_SPREAD } };
 }
 
 async function runPsiOnce(url: string, apiKey: string | undefined, strategy: "mobile" | "desktop"): Promise<{ data: SpeedData | null; error?: string }> {

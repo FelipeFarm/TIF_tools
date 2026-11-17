@@ -26,6 +26,8 @@ export interface SpeedData {
   fcpMs: number | null;
   /** Every lab score we got (we run the test several times and keep the median run) */
   runs?: number[];
+  /** Runs still disagreed by more than 15 points after the extra runs */
+  noisy?: boolean;
   /** Same test with Google's desktop settings (median run) */
   desktop?: SpeedData | null;
   /** Real-user (Chrome UX Report) data, when Google has enough traffic for the URL */

@@ -397,7 +397,8 @@ export function buildReport(input: {
   return {
     host: site.host,
     startUrl: site.startUrl,
-    pagesCrawled: pages.length,
+    // Unique pages (URLs that redirected to a page we already have are counted once), same number as the Crawled pages tab
+    pagesCrawled: pageRows.length,
     sitemapTotal: site.sitemap.urls.length,
     sitemapCrawled: (() => {
       const crawledSet = new Set(pages.flatMap((p) => [p.url, p.finalUrl]));

@@ -411,6 +411,8 @@ export default function SiteAudit() {
   const fixed = c ? Object.entries(c.prevIssues).filter(([id]) => !r.issues.some((i) => i.id === id)) : [];
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
   const errWarnIssues = r.issues.filter((i) => i.severity !== "notice").length;
+  const typesOf = (s: Severity) => r.issues.filter((i) => i.severity === s).length;
+  const errWarnCount = r.counts.errors + r.counts.warnings;
 
   return (
     <div ref={topRef} className="grader-results">
@@ -484,6 +486,9 @@ export default function SiteAudit() {
                 >
                   <span className="k">{SEV_LABEL[s]}</span>
                   <span className="v">{r.counts[key]}</span>
+                  <span className="sev-sub">
+                    {typesOf(s) ? `across ${typesOf(s)} issue type${typesOf(s) === 1 ? "" : "s"}` : "none found"}
+                  </span>
                   {c && <Delta now={r.counts[key]} prev={c.prevCounts[key]} />}
                 </button>
               );
@@ -524,7 +529,7 @@ export default function SiteAudit() {
       <div className="card mt">
         <div className="tabs" role="tablist">
           <button role="tab" aria-selected={tab === "issues"} className={tab === "issues" ? "on" : ""} onClick={() => setTab("issues")}>
-            Issues <span>{r.issues.length}</span>
+            Issue types <span>{r.issues.length}</span>
           </button>
           <button role="tab" aria-selected={tab === "pages"} className={tab === "pages" ? "on" : ""} onClick={() => setTab("pages")}>
             Crawled pages <span>{r.pages.length}</span>
@@ -536,7 +541,7 @@ export default function SiteAudit() {
             <div className="chips">
               {(["all", "error", "warning", "notice"] as const).map((f) => (
                 <button key={f} type="button" className={`chip ${f}${filter === f ? " on" : ""}`} onClick={() => setFilter(f)}>
-                  {f === "all" ? "All" : SEV_LABEL[f]} ({f === "all" ? r.issues.length : r.issues.filter((i) => i.severity === f).length})
+                  {f === "all" ? "All" : SEV_LABEL[f]} ({f === "all" ? r.issues.length : typesOf(f)})
                 </button>
               ))}
             </div>
@@ -663,7 +668,7 @@ export default function SiteAudit() {
         <LeadForm
           id="unlock"
           tool="site-audit"
-          heading={`Unlock fixes for ${errWarnIssues} problem${errWarnIssues === 1 ? "" : "s"} on ${r.host}`}
+          heading={`Unlock fixes for ${errWarnIssues} issue type${errWarnIssues === 1 ? "" : "s"} (${errWarnCount} error${errWarnCount === 1 ? "" : "s"} & warning${errWarnCount === 1 ? "" : "s"}) on ${r.host}`}
           sub="Get every affected URL and step-by-step fixes for each issue. Free, no obligation."
           cta="Unlock the full audit"
           defaultWebsite={r.startUrl}
@@ -740,7 +745,12 @@ function SpeedPanel({ label, d, device }: { label: string; d: SpeedData; device:
           </li>
         ))}
       </ul>
-      {d.runs && d.runs.length > 1 && <div className="snap-note">Middle of {d.runs.length} runs (scores: {d.runs.join(", ")})</div>}
+      {d.runs && d.runs.length > 1 && (
+        <div className="snap-note">
+          Middle of {d.runs.length} runs (scores: {d.runs.join(", ")})
+          {d.noisy ? ". Google's test was unusually inconsistent this time, so treat this score as approximate and re-run later." : ""}
+        </div>
+      )}
     </div>
   );
 }
