@@ -5,9 +5,9 @@ import LeadForm from "./LeadForm";
 import { withBase, BOOKING_URL } from "@/lib/basePath";
 import { ISSUE_INFO } from "@/lib/audit/issues";
 import { isDisallowed, isInternal, looksLikeHtml, pathOf } from "@/lib/audit/urls";
-import type { AuditReport, Issue, LinkStatus, PageRecord, Severity, SiteInfo, SpeedSummary } from "@/lib/audit/types";
+import type { AuditReport, HomepageReport, Issue, LinkStatus, PageRecord, Severity, SiteInfo, SpeedSummary } from "@/lib/audit/types";
 
-const UNLOCK_KEY = "tif_grader_unlocked"; // shared with the Website Grader: one form unlocks both
+const UNLOCK_KEY = "tif_grader_unlocked"; // same key the old Website Grader used, so people who already unlocked stay unlocked
 const SEV_LABEL: Record<Severity, string> = { error: "Errors", warning: "Warnings", notice: "Notices" };
 const SEV_ICON: Record<Severity, string> = { error: "✕", warning: "!", notice: "i" };
 
@@ -56,6 +56,11 @@ function Delta({ now, prev, lowerIsBetter = true, suffix = "" }: { now: number; 
 
 export default function SiteAudit() {
   const [url, setUrl] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [competitorUrl, setCompetitorUrl] = useState("");
+  const [showCompare, setShowCompare] = useState(false);
+  const [gradeState, setGradeState] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [compError, setCompError] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [site, setSite] = useState<SiteInfo | null>(null);
@@ -86,6 +91,10 @@ export default function SiteAudit() {
           if (d?.report) {
             setReport(d.report);
             setUrl(d.report.host);
+            if (d.report.competitor?.url) {
+              setCompetitorUrl(d.report.competitor.url);
+              setShowCompare(true);
+            }
             setPhase("done");
           } else {
             setError(d?.error || "We couldn't find that audit.");
@@ -116,10 +125,26 @@ export default function SiteAudit() {
       const max = limits.maxPages;
       setProg({ crawled: 0, max, broken: 0, current: site.startUrl, linksDone: 0, linksTotal: 0 });
 
-      // Google speed test runs in the background while we crawl
-      const speedP = post<{ speed: SpeedSummary | null }>("/api/audit/speed", { url: site.startUrl })
-        .then((d) => d.speed)
-        .catch(() => null);
+      // In-depth homepage check runs alongside the crawl:
+      // Google speed test, Business Profile, local signals, and the competitor (if any)
+      setGradeState("running");
+      setCompError("");
+      const comp = showCompare ? competitorUrl.trim() : "";
+      const gradeP = post<{ you: HomepageReport; competitor: HomepageReport | null; competitorError?: string }>("/api/grade", {
+        url: site.startUrl,
+        businessName,
+        competitorUrl: comp,
+      })
+        .then((d) => {
+          setGradeState("done");
+          if (d.competitorError) setCompError(d.competitorError);
+          return d;
+        })
+        .catch((e) => {
+          setGradeState("failed");
+          if (comp) setCompError(e instanceof Error ? e.message : "We couldn't check the competitor.");
+          return null;
+        });
 
       /* ── Crawl (breadth-first from the homepage, then sitemap-only URLs) ── */
       setPhase("crawling");
@@ -201,8 +226,19 @@ export default function SiteAudit() {
 
       /* ── Build + save the report ── */
       setPhase("finishing");
-      const speed = await Promise.race([speedP, new Promise<null>((r) => setTimeout(() => r(null), 45_000))]);
-      const { report } = await post<{ report: AuditReport }>("/api/audit/finish", { site, pages, links, blocked, speed, limitReached });
+      const grade = await Promise.race([gradeP, new Promise<null>((r) => setTimeout(() => r(null), 60_000))]);
+      const hs = grade?.you.speed;
+      const speed: SpeedSummary | null = hs ? { performance: hs.performance, lcpMs: hs.field?.lcpMs ?? hs.lcpMs, category: hs.field?.category ?? null } : null;
+      const { report } = await post<{ report: AuditReport }>("/api/audit/finish", {
+        site,
+        pages,
+        links,
+        blocked,
+        speed,
+        limitReached,
+        homepage: grade?.you ?? null,
+        competitor: grade?.competitor ?? null,
+      });
       setReport(report);
       setPhase("done");
       if (report.saved) {
@@ -241,7 +277,7 @@ export default function SiteAudit() {
     { key: "starting", label: "Reading robots.txt and sitemap" },
     { key: "crawling", label: "Crawling pages" },
     { key: "links", label: "Checking links and images" },
-    { key: "finishing", label: "Google speed test & building your report" },
+    { key: "finishing", label: "Building your report" },
   ];
   const order: Phase[] = ["starting", "crawling", "links", "finishing", "done"];
   const phaseIdx = order.indexOf(phase);
@@ -256,9 +292,9 @@ export default function SiteAudit() {
           run(url);
         }}
       >
-        <div className="audit-form">
-          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
-            <label htmlFor="audit-url">Website to audit</label>
+        <div className="row2">
+          <div className="field">
+            <label htmlFor="audit-url">Your website</label>
             <input
               id="audit-url"
               type="text"
@@ -270,18 +306,58 @@ export default function SiteAudit() {
               disabled={busy}
             />
           </div>
+          <div className="field">
+            <label htmlFor="audit-biz">
+              Business name & city <span className="opt-label">optional</span>
+            </label>
+            <input
+              id="audit-biz"
+              type="text"
+              placeholder="Smith Plumbing, Katy TX"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              disabled={busy}
+            />
+            <p className="hint" style={{ marginTop: 6, marginBottom: 0 }}>
+              Helps us find your Google Business Profile.
+            </p>
+          </div>
+        </div>
+        {showCompare ? (
+          <div className="field">
+            <label htmlFor="audit-comp">
+              Competitor&apos;s website <span className="opt-label">optional</span>
+            </label>
+            <input
+              id="audit-comp"
+              type="text"
+              inputMode="url"
+              placeholder="competitor.com"
+              value={competitorUrl}
+              onChange={(e) => setCompetitorUrl(e.target.value)}
+              disabled={busy}
+            />
+          </div>
+        ) : (
+          <button type="button" className="link-btn" onClick={() => setShowCompare(true)} disabled={busy}>
+            + Compare against a competitor
+          </button>
+        )}
+        <div className="actions" style={{ marginTop: 18 }}>
           <button className="btn" type="submit" disabled={busy || !url.trim()}>
             {busy ? (
               <>
                 <span className="spin" /> Auditing…
               </>
+            ) : showCompare && competitorUrl.trim() ? (
+              "Audit & compare"
             ) : (
               "Start site audit"
             )}
           </button>
         </div>
         <p className="hint" style={{ marginTop: 10, marginBottom: 0 }}>
-          We crawl up to 100 pages and run 40+ checks. Most sites finish in 1–2 minutes.
+          We crawl up to 100 pages, run Google&apos;s speed test and 50+ checks. Most sites finish in 1–2 minutes.
         </p>
         {error && <p className="error">{error}</p>}
 
@@ -313,6 +389,15 @@ export default function SiteAudit() {
                 </div>
               );
             })}
+            {gradeState !== "idle" && (
+              <div className={`pstep ${gradeState === "running" ? "active" : "done"} parallel`}>
+                <span className="pdot">{gradeState === "running" ? "" : "✓"}</span>
+                <span style={{ flex: 1 }}>
+                  Google speed test & Business Profile{showCompare && competitorUrl.trim() ? " (you and your competitor)" : ""}
+                  <span className="pmeta">{gradeState === "running" ? "running alongside the crawl" : gradeState === "failed" ? "unavailable" : "done"}</span>
+                </span>
+              </div>
+            )}
             {phase === "crawling" && (
               <>
                 <div className="crawl-bar">
@@ -441,6 +526,9 @@ export default function SiteAudit() {
           ))}
         </div>
       </div>
+
+      {/* ── Local & speed snapshot (in-depth homepage check) ── */}
+      {r.homepage && <Snapshot you={r.homepage} them={r.competitor ?? null} compError={compError} />}
 
       {/* ── Tabs ── */}
       <div className="card mt">
@@ -603,6 +691,10 @@ export default function SiteAudit() {
               .map((i) => `${i.title} (${i.count})`)
               .join("; "),
             mobile_speed: r.speed ? `${r.speed.performance}/100` : "n/a",
+            google_business_profile: r.homepage?.gbp
+              ? `${r.homepage.gbp.status}${r.homepage.gbp.reviews != null ? ` (${r.homepage.gbp.rating ?? "-"}★, ${r.homepage.gbp.reviews} reviews)` : ""}`
+              : "not checked",
+            competitor: r.competitor ? `${r.competitor.host} homepage score ${r.competitor.score} vs ours ${r.homepage?.score ?? "-"}` : "none",
           }}
         />
       ) : (
@@ -624,6 +716,162 @@ export default function SiteAudit() {
           </a>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ───────────── Local & speed snapshot + head-to-head ───────────── */
+
+const secs = (ms: number | null | undefined) => (ms == null ? "—" : `${(ms / 1000).toFixed(1)}s`);
+const hc = (r: HomepageReport, id: string) => r.checks.find((c) => c.id === id);
+
+function Snapshot({ you, them, compError }: { you: HomepageReport; them: HomepageReport | null; compError: string }) {
+  const sp = you.speed;
+  const lcp = sp ? (sp.field?.lcpMs ?? sp.lcpMs) : null;
+  const g = you.gbp;
+  const phone = hc(you, "phone");
+  const schema = hc(you, "schema");
+  return (
+    <div className="card mt">
+      <h2>Local & speed snapshot</h2>
+      <p className="note" style={{ marginTop: -4 }}>
+        An in-depth look at your homepage: Google&apos;s own speed test and how you show up in local search.
+      </p>
+      <div className="snap">
+        <div className="snap-box">
+          <div className="snap-k">Google mobile speed</div>
+          {sp ? (
+            <>
+              <div className="snap-v" style={{ color: sp.performance >= 90 ? "var(--good)" : sp.performance >= 50 ? "#b07a00" : "#d93636" }}>
+                {sp.performance}
+                <small>/100</small>
+              </div>
+              <div className="snap-sub">
+                Main content in {secs(lcp)}
+                {sp.field ? ` · real visitors: ${sp.field.category.toLowerCase()}` : ""}
+              </div>
+            </>
+          ) : (
+            <div className="snap-sub">{you.speedError || "Google's speed test was unavailable."}</div>
+          )}
+        </div>
+        <div className="snap-box">
+          <div className="snap-k">Google Business Profile</div>
+          {g ? (
+            g.status === "not_found" ? (
+              <>
+                <div className="snap-v bad">Not found</div>
+                <div className="snap-sub">No listing linked to this website</div>
+              </>
+            ) : (
+              <>
+                <div className="snap-v">
+                  {g.rating ? `★ ${g.rating.toFixed(1)}` : "No rating"}
+                  <small> {g.reviews ?? 0} reviews</small>
+                </div>
+                <div className="snap-sub">
+                  {g.mapsUri ? (
+                    <a href={g.mapsUri} target="_blank" rel="noopener noreferrer">
+                      {g.name}
+                    </a>
+                  ) : (
+                    g.name
+                  )}
+                  {g.status === "possible" ? " · not linked to this site" : ""}
+                </div>
+              </>
+            )
+          ) : (
+            <div className="snap-sub">Not checked</div>
+          )}
+        </div>
+        <div className="snap-box">
+          <div className="snap-k">Local basics</div>
+          <ul className="snap-list">
+            <li className={phone?.status ?? "warn"}>
+              <span>{phone?.status === "pass" ? "✓" : phone?.status === "fail" ? "✕" : "!"}</span> Tap-to-call phone: {phone?.headline ?? "—"}
+            </li>
+            <li className={schema?.status ?? "warn"}>
+              <span>{schema?.status === "pass" ? "✓" : schema?.status === "fail" ? "✕" : "!"}</span> Business schema: {schema?.headline ?? "—"}
+            </li>
+            <li className={you.url.startsWith("https:") ? "pass" : "fail"}>
+              <span>{you.url.startsWith("https:") ? "✓" : "✕"}</span> Secure (HTTPS)
+            </li>
+          </ul>
+        </div>
+      </div>
+      {them && <HeadToHead you={you} them={them} />}
+      {compError && <p className="note">Competitor not checked: {compError}</p>}
+    </div>
+  );
+}
+
+function HeadToHead({ you, them }: { you: HomepageReport; them: HomepageReport }) {
+  type Row = { label: string; a: string; b: string; win: "a" | "b" | "tie" };
+  const num = (a: number | null | undefined, b: number | null | undefined, higher = true): "a" | "b" | "tie" =>
+    a == null || b == null || a === b ? "tie" : (a > b) === higher ? "a" : "b";
+  const lcpA = you.speed ? (you.speed.field?.lcpMs ?? you.speed.lcpMs) : null;
+  const lcpB = them.speed ? (them.speed.field?.lcpMs ?? them.speed.lcpMs) : null;
+  const statusRank = { pass: 2, warn: 1, fail: 0 } as const;
+  const chk = (id: string, label: string): Row => {
+    const a = hc(you, id);
+    const b = hc(them, id);
+    return { label, a: a?.headline ?? "—", b: b?.headline ?? "—", win: num(a ? statusRank[a.status] : null, b ? statusRank[b.status] : null) };
+  };
+  const rows: Row[] = [
+    { label: "Homepage score", a: `${you.score} (${you.grade})`, b: `${them.score} (${them.grade})`, win: num(you.score, them.score) },
+    { label: "Google mobile speed", a: you.speed ? `${you.speed.performance}/100` : "—", b: them.speed ? `${them.speed.performance}/100` : "—", win: num(you.speed?.performance, them.speed?.performance) },
+    { label: "Main content load", a: secs(lcpA), b: secs(lcpB), win: num(lcpA, lcpB, false) },
+    {
+      label: "Google reviews",
+      a: you.gbp && you.gbp.status !== "not_found" ? `${you.gbp.reviews ?? 0} (${you.gbp.rating?.toFixed(1) ?? "-"}★)` : you.gbp ? "No profile" : "—",
+      b: them.gbp && them.gbp.status !== "not_found" ? `${them.gbp.reviews ?? 0} (${them.gbp.rating?.toFixed(1) ?? "-"}★)` : them.gbp ? "No profile" : "—",
+      win: you.gbp && them.gbp ? num(you.gbp.status === "not_found" ? -1 : (you.gbp.reviews ?? 0), them.gbp.status === "not_found" ? -1 : (them.gbp.reviews ?? 0)) : "tie",
+    },
+    chk("title", "Page title"),
+    chk("description", "Meta description"),
+    chk("phone", "Tap-to-call phone"),
+    chk("schema", "Business schema"),
+    chk("https", "HTTPS"),
+  ];
+  const aWins = rows.filter((r) => r.win === "a").length;
+  const bWins = rows.filter((r) => r.win === "b").length;
+  return (
+    <div className="h2h">
+      <h3>
+        Head-to-head vs {them.host}
+      </h3>
+      <p className="verdict" style={{ textAlign: "left" }}>
+        {(() => {
+          const ties = rows.length - aWins - bWins;
+          const tally = `You lead on ${aWins}, ${them.host} leads on ${bWins}${ties ? `, ${ties} tied` : ""}.`;
+          return aWins > bWins
+            ? `You're ahead. ${tally} Here's how to widen the gap.`
+            : aWins < bWins
+              ? `${them.host} is ahead. ${tally} Here's where they're beating you.`
+              : `Neck and neck. ${tally} Small fixes will decide who wins.`;
+        })()}
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <table className="table h2h-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>You</th>
+              <th>{them.host}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label}>
+                <td>{r.label}</td>
+                <td className={r.win === "a" ? "win" : r.win === "b" ? "lose" : ""}>{r.a}</td>
+                <td className={r.win === "b" ? "win" : r.win === "a" ? "lose" : ""}>{r.b}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

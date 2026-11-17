@@ -13,18 +13,12 @@ export const TOOLS = [
     short: "Budget Google, Meta & LSA",
     body: "See a ballpark Google, Meta and Local Services Ads budget for your industry, and the leads it could bring in.",
   },
-  {
-    href: "/website-grader",
-    icon: "grader",
-    title: "Website Grader",
-    short: "Score your site vs. a competitor",
-    body: "Get a free score with Google's speed test, an SEO check-up and a Google Business Profile lookup. Compare against a competitor.",
-  },
+
   {
     href: "/site-audit",
     icon: "audit",
     title: "Site Audit",
-    short: "Crawl your whole site",
-    body: "A full crawl of up to 100 pages: broken links, redirects, duplicate titles, thin content and 40+ other checks, with a Site Health score.",
+    short: "Speed, SEO & local check-up",
+    body: "Crawl up to 100 pages and run Google's speed test, a Business Profile lookup and 50+ checks. Get a Site Health score and compare against a competitor.",
   },
 ] as const;

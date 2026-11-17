@@ -1,7 +1,7 @@
 import { buildReport } from "@/lib/audit/issues";
 import { maxPages } from "@/lib/audit/config";
 import { previousAudit, saveAudit } from "@/lib/audit/storage";
-import type { AuditReport, LinkStatus, PageRecord, SiteInfo, SpeedSummary } from "@/lib/audit/types";
+import type { AuditReport, HomepageReport, LinkStatus, PageRecord, SiteInfo, SpeedSummary } from "@/lib/audit/types";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -20,6 +20,8 @@ export async function POST(req: Request) {
       speed: (body?.speed ?? null) as SpeedSummary | null,
       maxPages: max,
       limitReached: !!body?.limitReached,
+      homepage: validHomepage(body?.homepage),
+      competitor: validHomepage(body?.competitor),
     });
     const compare = await previousAudit(core.host);
     const report: AuditReport = { ...core, id: crypto.randomUUID(), createdAt: new Date().toISOString(), compare, saved: false };
@@ -29,4 +31,10 @@ export async function POST(req: Request) {
     console.error("[audit/finish]", err);
     return Response.json({ error: "We couldn't build the report. Please try again." }, { status: 500 });
   }
+}
+
+/** Light shape check on the homepage report sent back by the browser */
+function validHomepage(v: unknown): HomepageReport | null {
+  const r = v as HomepageReport | null;
+  return r && typeof r.score === "number" && Array.isArray(r.checks) && r.checks.length < 60 ? r : null;
 }

@@ -348,3 +348,23 @@ p.error { color: var(--bad); margin-top: 12px; font-weight: 500; }
   .score.big { width: 130px; height: 130px; }
 }
 .warn-note { margin: 8px 0 0; padding: 6px 10px; background: var(--warn-bg); border-radius: 0.4rem; color: #7a5600; width: fit-content; }
+
+/* ── Merged audit: local & speed snapshot, head-to-head ── */
+.pstep.parallel { border-top: 1px dashed #d6d6d6; margin-top: 6px; padding-top: 10px; }
+.snap { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+.snap-box { background: var(--light); border-radius: 0.8rem; padding: 16px 18px; }
+.snap-k { font-size: 14px; color: var(--muted); font-weight: 500; margin-bottom: 4px; }
+.snap-v { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.snap-v small { font-size: 14px; font-weight: 500; color: var(--muted); }
+.snap-v.bad { color: #d93636; }
+.snap-sub { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.snap-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.snap-list li span { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 800; margin-right: 6px; }
+.snap-list li.pass span { background: var(--good-bg); color: var(--good); }
+.snap-list li.warn span { background: var(--warn-bg); color: #9a6a00; }
+.snap-list li.fail span { background: var(--bad-bg); color: #d93636; }
+.h2h { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.h2h-table td:first-child { font-weight: 500; color: var(--ink); }
+.h2h-table td.win { color: var(--good); font-weight: 700; }
+.h2h-table td.win::after { content: " ✓"; }
+.h2h-table td.lose { color: var(--muted); }

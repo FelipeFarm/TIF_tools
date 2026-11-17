@@ -1,6 +1,6 @@
 export type Severity = "error" | "warning" | "notice";
-export type Theme = "Crawlability" | "HTTPS" | "On-page SEO" | "Internal linking" | "Performance" | "Markup";
-export const THEMES: Theme[] = ["Crawlability", "HTTPS", "On-page SEO", "Internal linking", "Performance", "Markup"];
+export type Theme = "Crawlability" | "HTTPS" | "On-page SEO" | "Local SEO" | "Internal linking" | "Performance" | "Markup";
+export const THEMES: Theme[] = ["Crawlability", "HTTPS", "On-page SEO", "Local SEO", "Internal linking", "Performance", "Markup"];
 
 /** One crawled URL, as returned by /api/audit/crawl */
 export interface PageRecord {
@@ -58,6 +58,9 @@ export interface Issue {
   affected: AffectedUrl[];
 }
 
+import type { Report as HomepageReport } from "@/lib/grader/types";
+export type { HomepageReport };
+
 export interface SpeedSummary {
   performance: number;
   lcpMs: number | null;
@@ -98,6 +101,10 @@ export interface AuditReport {
   speed: SpeedSummary | null;
   /** Pages that returned a bot check instead of content (not scored) */
   challenged: number;
+  /** In-depth homepage check (Google speed test, Business Profile, local signals) */
+  homepage?: HomepageReport | null;
+  /** Same homepage check for a competitor, if one was entered */
+  competitor?: HomepageReport | null;
   compare: Comparison | null;
   saved: boolean;
 }

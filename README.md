@@ -1,13 +1,13 @@
 # TIF Tools
 
-Four free lead-gen tools for The Idea Farm, built with Next.js and deployed on **Webflow Cloud**:
+Three free lead-gen tools for The Idea Farm, built with Next.js and deployed on **Webflow Cloud**:
 
 | Page | What it does |
 |---|---|
 | `/seo-plan-picker` | 6 questions → recommends Starter, Growth or Authority |
 | `/ad-budget-estimator` | Industry + market + budget/leads goal → Google / Meta / LSA split and lead estimate |
-| `/site-audit` | Semrush-style Site Audit: crawls up to 100 pages, runs 40+ checks, gives a Site Health score, saves each audit and compares re-runs |
-| `/website-grader` | Enter a URL (plus optional competitor) → Google speed test, SEO basics, Google Business Profile lookup and local checks, scored out of 100. Fixes unlock with the lead form |
+| `/site-audit` | Site Audit (includes the former Website Grader): crawls up to 100 pages, runs Google's speed test, a Google Business Profile lookup and 50+ checks, gives a Site Health score, compares against a competitor, saves each audit and compares re-runs |
+| `/website-grader` | Old link, now redirects to `/site-audit` |
 
 Each tool ends with a lead form that sends the contact plus their answers/results to **GoHighLevel** through an inbound webhook.
 
@@ -49,10 +49,12 @@ Have the SEO and Ads leads sanity-check these.
 ## Site Audit
 
 ### How it works
+The in-depth homepage check from the old Website Grader (`/api/grade`: Google speed test, Business Profile lookup, tap-to-call, LocalBusiness schema, and the same for a competitor) runs alongside the crawl. Its findings appear in a **Local & speed snapshot**, a **head-to-head table** when a competitor is entered, a **Local SEO** area score, and these issues: no/unlinked Business Profile, few reviews, no phone / not tap-to-call, no LocalBusiness schema, slow main content (LCP), layout shift (CLS) and slow responsiveness.
+
 1. **Start** (`/api/audit/start`): resolves the real homepage, reads robots.txt and the XML sitemap (including sitemap indexes).
 2. **Crawl** (`/api/audit/crawl`): the visitor's browser drives the crawl, sending 6 URLs at a time. It goes breadth-first from the homepage, then visits sitemap-only URLs. This keeps every server request small (Cloudflare limits outbound requests per request) and shows live progress. It respects robots.txt and slows down automatically when a site starts showing bot checks.
 3. **Link check** (`/api/audit/check-links`): status-checks up to 150 external links, images and internal files.
-4. **Speed** (`/api/audit/speed`): Google mobile speed test on the homepage, run in the background during the crawl.
+4. **Homepage check** (`/api/grade`): runs in the background during the crawl, for your site and the competitor.
 5. **Finish** (`/api/audit/finish`): builds the report, compares it with the last audit of the same site, and saves it.
 
 ### Checks (`lib/audit/issues.ts`)
@@ -64,7 +66,7 @@ Each issue has a plain-English "why it matters" and "how to fix". Issue names an
 
 ### Scores
 - **Site Health:** average page cleanliness. Each distinct error on a page costs 35% of that page's score and each warning 8%. Notices don't count. Site-wide problems: no HTTPS −10 points, other site-wide warnings −3.
-- **Thematic reports** (Crawlability, HTTPS, On-page SEO, Internal linking, Performance, Markup) use the same method, limited to each area's issues.
+- **Thematic reports** (Crawlability, HTTPS, On-page SEO, Local SEO, Internal linking, Performance, Markup) use the same per-page method, limited to each area's issues. Site-wide problems weigh more inside their own area (−25 error / −15 warning / −5 notice), so a missing Business Profile shows clearly in Local SEO.
 - **Bot protection:** pages that return a bot check (e.g. Cloudflare's "Just a moment…") are reported once as a notice and left out of every score, so a protected site isn't blamed for problems we couldn't see.
 - **"No response":** links that time out are not reported as broken. Only real 4xx/5xx errors are.
 
@@ -80,7 +82,7 @@ Audits are saved in Webflow Cloud's SQLite database:
 - Raise the page limit with the `AUDIT_MAX_PAGES` environment variable (hard cap 1000). Don't do this on the public page: put team mode behind a login first.
 - `lib/audit/config.ts` holds all the limits (batch sizes, link-check cap, thresholds for slow pages, thin content, etc.).
 
-## Google API key for the Website Grader
+## Google API key (speed test + Business Profile)
 
 The grader uses two Google APIs:
 

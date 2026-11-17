@@ -1,5 +1,5 @@
 import { DEEP_DEPTH, LARGE_HTML_BYTES, LOW_WORDS, MAX_AFFECTED, SLOW_MS } from "./config";
-import { THEMES, type AffectedUrl, type AuditReport, type Issue, type LinkStatus, type PageRecord, type Severity, type SiteInfo, type SpeedSummary, type Theme } from "./types";
+import { THEMES, type AffectedUrl, type HomepageReport, type AuditReport, type Issue, type LinkStatus, type PageRecord, type Severity, type SiteInfo, type SpeedSummary, type Theme } from "./types";
 import { isInternal, pathOf } from "./urls";
 
 interface Def {
@@ -47,6 +47,17 @@ const DEFS: Def[] = [
   { id: "sitemap_bad_urls", severity: "warning", theme: "Crawlability", title: "Sitemap lists broken or redirected URLs", why: "Your sitemap should only list live pages. Bad entries waste Google's crawl time and erode trust in the sitemap.", fix: "Remove dead URLs from the sitemap and replace redirected ones with their final URL." },
   { id: "slow_mobile_speed", severity: "warning", theme: "Performance", title: "Poor Google mobile speed score", why: "Google's speed test puts your homepage in the red zone on phones.", fix: "Compress and resize images (WebP/AVIF), lazy-load below-the-fold images, remove unused scripts and widgets, and load fonts efficiently.", site: true },
 
+  // Homepage / local checks (from the in-depth homepage check)
+  { id: "gbp_missing", severity: "warning", theme: "Local SEO", title: "No Google Business Profile found", why: "Your Business Profile is what shows in Google Maps and the local 'map pack', often where local customers call from. We couldn't find one that links to this website.", fix: "Claim or create your profile at business.google.com, verify it, add your website link, categories, hours, photos and services. If you already have one, make sure its website field is this exact address.", site: true },
+  { id: "gbp_not_linked", severity: "warning", theme: "Local SEO", title: "Google Business Profile doesn't link to this site", why: "We found a listing with your business name, but its website field points elsewhere, so Google may not connect your profile and your site.", fix: "Edit your Business Profile and set the website to this exact address. Make sure your name, address and phone match the site word for word.", site: true },
+  { id: "gbp_few_reviews", severity: "notice", theme: "Local SEO", title: "Few or low Google reviews", why: "Profiles with more recent reviews (20+ at 4.3★ or higher) tend to win the map results.", fix: "Send a review link by text or email after every job, reply to every review, and post photos and updates monthly.", site: true },
+  { id: "no_click_to_call", severity: "warning", theme: "Local SEO", title: "No phone number on the homepage", why: "For local businesses, calls are often the #1 lead source. We couldn't find a phone number on the homepage.", fix: "Put your phone number in the header and footer as a tap-to-call link (tel:). Use the same number as your Google Business Profile.", site: true },
+  { id: "phone_not_clickable", severity: "notice", theme: "Local SEO", title: "Phone number isn't tap-to-call", why: "Your number is on the homepage, but mobile visitors have to copy it instead of tapping to call.", fix: "Wrap the number in a tel: link, e.g. <a href=\"tel:+17135551234\">.", site: true },
+  { id: "no_local_schema", severity: "notice", theme: "Local SEO", title: "No LocalBusiness schema on the homepage", why: "Structured data with your business name, address and phone supports local rankings and rich results.", fix: "Add LocalBusiness schema (or the closest type, like Dentist or Plumber) with name, address, phone, hours and service area, matching your Business Profile exactly.", site: true },
+  { id: "slow_lcp", severity: "warning", theme: "Performance", title: "Main content loads slowly on phones (LCP)", why: "The biggest thing on screen (usually the hero image or headline) takes too long to appear. Google's target is under 2.5s.", fix: "Shrink and preload the hero image, avoid hero videos/sliders on mobile, and make sure the headline isn't waiting on fonts or scripts.", site: true },
+  { id: "layout_shift", severity: "warning", theme: "Performance", title: "Page jumps around while loading (CLS)", why: "Content shifting as the page loads causes mis-taps and frustration. Google's target is under 0.1.", fix: "Set width and height on images and embeds, reserve space for banners and pop-ups, and avoid injecting content above what's on screen.", site: true },
+  { id: "slow_response", severity: "warning", theme: "Performance", title: "Slow to respond to taps", why: "Heavy scripts keep the page from reacting quickly to taps and clicks. Google's target is under 200ms.", fix: "Remove unused apps and widgets, delay non-essential scripts, and break up long JavaScript tasks.", site: true },
+
   // Notices
   { id: "orphan_pages", severity: "notice", theme: "Internal linking", title: "Orphan pages (in sitemap, no internal links)", why: "Nothing on your site links to these pages, so visitors can't find them and Google sees them as unimportant.", fix: "Link to these pages from relevant pages, menus or hub pages, or remove them from the sitemap if they're obsolete." },
   { id: "deep_pages", severity: "notice", theme: "Internal linking", title: `Pages more than ${DEEP_DEPTH} clicks from the homepage`, why: "Deeply buried pages get crawled less often and carry less weight.", fix: "Link to important pages from the homepage, main menu or category pages so they're within 3 clicks." },
@@ -81,6 +92,8 @@ export function buildReport(input: {
   speed: SpeedSummary | null;
   maxPages: number;
   limitReached: boolean;
+  homepage?: HomepageReport | null;
+  competitor?: HomepageReport | null;
 }): Omit<AuditReport, "id" | "createdAt" | "compare" | "saved"> {
   const { site, pages, links, blocked, speed } = input;
   const hits = new Map<string, AffectedUrl[]>();
@@ -224,6 +237,28 @@ export function buildReport(input: {
     else if (speed.performance < 90) add("speed_needs_work", site.startUrl, `${speed.performance}/100`);
   }
 
+  /* ── In-depth homepage check (speed details, Business Profile, local signals) ── */
+  const hp = input.homepage;
+  if (hp) {
+    const hc = (id: string) => hp.checks.find((c) => c.id === id);
+    const gbp = hc("gbp");
+    if (gbp && gbp.status !== "pass") {
+      const id = hp.gbp?.status === "not_found" ? "gbp_missing" : hp.gbp?.status === "possible" ? "gbp_not_linked" : "gbp_few_reviews";
+      add(id, site.startUrl, hp.gbp?.name ? `${hp.gbp.name} · ${gbp.headline}` : gbp.headline);
+    }
+    const phone = hc("phone");
+    if (phone?.status === "fail") add("no_click_to_call", site.startUrl);
+    else if (phone?.status === "warn") add("phone_not_clickable", site.startUrl);
+    const ls = hc("schema");
+    if (ls && ls.status !== "pass") add("no_local_schema", site.startUrl, ls.headline);
+    const lcp = hc("lcp");
+    if (lcp && lcp.status !== "pass") add("slow_lcp", site.startUrl, lcp.headline);
+    const cls = hc("cls");
+    if (cls && cls.status !== "pass") add("layout_shift", site.startUrl, `CLS ${cls.headline}`);
+    const resp = hc("inp") ?? hc("tbt");
+    if (resp && resp.status !== "pass") add("slow_response", site.startUrl, resp.headline);
+  }
+
   /* ── Assemble issues ── */
   const issues: Issue[] = DEFS.filter((d) => hits.has(d.id))
     .map((d) => {
@@ -271,14 +306,15 @@ export function buildReport(input: {
   health = Math.max(0, Math.min(100, Math.round(health)));
 
   /* ── Thematic scores: same per-page method as Site Health, limited to that area's issues
-     (errors −35%, warnings −8%, notices −2% per page; site-level problems −10/−3/−1 pts) ── */
-  const themes = THEMES.map((name) => {
+     (errors −35%, warnings −8%, notices −2% per page; site-wide problems −25/−15/−5 pts in their area) ── */
+  const themes = THEMES.filter((t) => t !== "Local SEO" || !!input.homepage).map((name) => {
     const tp = new Map<string, number>();
     let sitePenalty = 0;
     for (const i of issues.filter((x) => x.theme === name)) {
       const cost = i.severity === "error" ? 0.35 : i.severity === "warning" ? 0.08 : 0.02;
       if (defOf.get(i.id)?.site) {
-        sitePenalty += i.severity === "error" ? 10 : i.severity === "warning" ? 3 : 1;
+        // Site-wide problems weigh more inside their own area (e.g. no Business Profile in Local SEO)
+        sitePenalty += i.severity === "error" ? 25 : i.severity === "warning" ? 15 : 5;
         continue;
       }
       for (const a of hits.get(i.id)!) if (crawledUrls.has(a.url)) tp.set(a.url, (tp.get(a.url) ?? 0) + cost);
@@ -331,5 +367,7 @@ export function buildReport(input: {
     pages: pageRows,
     speed,
     challenged: challenged.length,
+    homepage: input.homepage ?? null,
+    competitor: input.competitor ?? null,
   };
 }
