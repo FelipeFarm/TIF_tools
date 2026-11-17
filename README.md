@@ -70,7 +70,7 @@ Each issue has a plain-English "why it matters" and "how to fix". Issue names an
 
 ### Saved audits and comparisons (SQLite)
 Audits are saved in Webflow Cloud's SQLite database:
-- `wrangler.json` declares the `DB` binding (`d1_databases`) and points at `./migrations`.
+- `wrangler.json` is the full Cloudflare config (same shape as Webflow's Next.js starter: `main`, `assets`, `compatibility_flags`) plus the `DB` binding (`d1_databases`) pointing at `./migrations`. Don't trim it down to just the binding: a `wrangler.json` without `main`/`assets` fails the Webflow build with "Missing entry-point".
 - `migrations/0001_site_audits.sql` creates the `site_audits` table. Webflow Cloud applies migrations automatically on deploy. Never edit a deployed migration; add `0002_…sql` instead.
 - After the first deploy, Webflow Cloud assigns the real database ID. Copy it from the app's **Storage** tab into `database_id` in `wrangler.json` (replacing `replace-after-first-deploy`) and commit.
 - Each report gets a shareable link (`/site-audit?id=…`). Re-auditing a site shows changes since its last audit: health points, error/warning/notice counts, new issues, and a "Fixed since…" list.
