@@ -4,7 +4,7 @@ import { useState } from "react";
 import { withBase, BOOKING_URL } from "@/lib/basePath";
 
 interface Props {
-  tool: "seo-plan-picker" | "ad-budget-estimator" | "website-grader";
+  tool: "seo-plan-picker" | "ad-budget-estimator" | "website-grader" | "site-audit";
   heading: string;
   sub: string;
   cta: string;

@@ -1,0 +1,10 @@
+{
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tif_tools",
+      "database_id": "replace-after-first-deploy",
+      "migrations_dir": "./migrations"
+    }
+  ]
+}

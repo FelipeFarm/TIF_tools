@@ -1,5 +1,5 @@
 
-const TOOLS = new Set(["seo-plan-picker", "ad-budget-estimator", "website-grader"]);
+const TOOLS = new Set(["seo-plan-picker", "ad-budget-estimator", "website-grader", "site-audit"]);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function clean(v: unknown, max = 200): string {

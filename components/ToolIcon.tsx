@@ -2,7 +2,7 @@
  * Custom brand icons for the three tools.
  * Strokes use currentColor (set by the container); the gold accent uses --icon-accent.
  */
-export type ToolIconName = "seo" | "ads" | "grader";
+export type ToolIconName = "seo" | "ads" | "grader" | "audit";
 
 const common = {
   viewBox: "0 0 32 32",
@@ -40,6 +40,20 @@ export default function ToolIcon({ name, size = 26 }: { name: ToolIconName; size
         <path d="M13 11.4v1.6M13 23v1.6" />
         <path d="M19.5 9.5 27 3" stroke={accent} strokeWidth={2.2} />
         <path d="M22 3h5v5" stroke={accent} strokeWidth={2.2} />
+      </svg>
+    );
+  }
+  if (name === "audit") {
+    // Site tree being crawled, with a gold check
+    return (
+      <svg {...common} width={size} height={size}>
+        <rect x="12" y="3" width="8" height="6" rx="1.5" />
+        <path d="M16 9v4M7 13h18M7 13v3M16 13v3M25 13v3" />
+        <rect x="3.5" y="16" width="7" height="5.5" rx="1.4" />
+        <rect x="12.5" y="16" width="7" height="5.5" rx="1.4" />
+        <rect x="21.5" y="16" width="7" height="5.5" rx="1.4" />
+        <circle cx="23.5" cy="25.5" r="4.5" fill={accent} stroke={accent} />
+        <path d="m21.6 25.6 1.4 1.4 2.6-2.8" stroke="#fff" strokeWidth={1.8} />
       </svg>
     );
   }

@@ -1,11 +1,12 @@
 # TIF Tools
 
-Three free lead-gen tools for The Idea Farm, built with Next.js and deployed on **Webflow Cloud**:
+Four free lead-gen tools for The Idea Farm, built with Next.js and deployed on **Webflow Cloud**:
 
 | Page | What it does |
 |---|---|
 | `/seo-plan-picker` | 6 questions → recommends Starter, Growth or Authority |
 | `/ad-budget-estimator` | Industry + market + budget/leads goal → Google / Meta / LSA split and lead estimate |
+| `/site-audit` | Semrush-style Site Audit: crawls up to 100 pages, runs 40+ checks, gives a Site Health score, saves each audit and compares re-runs |
 | `/website-grader` | Enter a URL (plus optional competitor) → Google speed test, SEO basics, Google Business Profile lookup and local checks, scored out of 100. Fixes unlock with the lead form |
 
 Each tool ends with a lead form that sends the contact plus their answers/results to **GoHighLevel** through an inbound webhook.
@@ -36,13 +37,48 @@ Have the SEO and Ads leads sanity-check these.
    | `NEXT_PUBLIC_BASE_PATH` | Your mount path, e.g. `/tools` (leave empty if standalone at the root) | No |
    | `GHL_WEBHOOK_URL` | GHL inbound webhook URL (see below) | **Yes** |
    | `NEXT_PUBLIC_BOOKING_URL` | GHL booking calendar link | No |
-   | `GOOGLE_API_KEY` | Google Cloud API key for the website grader (see below) | **Yes** |
+   | `GOOGLE_API_KEY` | Google Cloud API key for the Website Grader and Site Audit speed tests (see below) | **Yes** |
+   | `AUDIT_MAX_PAGES` | Optional. Pages per Site Audit (default 100). Leave unset for the public tool | No |
 
 4. **Deploy.** Then visit `theideafarm.net/tools` (or the `.webflow.io` URL Webflow gives you).
 
 > Don't add `basePath` / `assetPrefix` to `next.config.ts`. Webflow Cloud sets them from the mount path.
 
 ---
+
+## Site Audit
+
+### How it works
+1. **Start** (`/api/audit/start`): resolves the real homepage, reads robots.txt and the XML sitemap (including sitemap indexes).
+2. **Crawl** (`/api/audit/crawl`): the visitor's browser drives the crawl, sending 6 URLs at a time. It goes breadth-first from the homepage, then visits sitemap-only URLs. This keeps every server request small (Cloudflare limits outbound requests per request) and shows live progress. It respects robots.txt and slows down automatically when a site starts showing bot checks.
+3. **Link check** (`/api/audit/check-links`): status-checks up to 150 external links, images and internal files.
+4. **Speed** (`/api/audit/speed`): Google mobile speed test on the homepage, run in the background during the crawl.
+5. **Finish** (`/api/audit/finish`): builds the report, compares it with the last audit of the same site, and saves it.
+
+### Checks (`lib/audit/issues.ts`)
+- **Errors:** 4xx/5xx pages, pages that couldn't be crawled, broken internal links, broken images, missing or duplicate titles, duplicate descriptions, duplicate content, mixed content, redirect loops/long chains, canonicals pointing to broken pages, no HTTPS.
+- **Warnings:** missing descriptions/H1, long titles, thin content, missing alt text, slow pages, very large pages, broken external links, temporary redirects, 2-hop redirect chains, links to http://, no viewport, no sitemap, bad sitemap URLs, poor Google mobile speed.
+- **Notices:** orphan pages (only reported when the whole site was crawled), deep pages, pages with one internal link, links to redirects, nofollow internal links, multiple H1s, short titles, no canonical, noindex pages, robots.txt blocks, no robots.txt, bot-protected pages, no lang, no social preview, no schema, speed that needs improvement.
+
+Each issue has a plain-English "why it matters" and "how to fix". Issue names and counts are free; the fixes and affected URLs unlock with the lead form (the same unlock as the Website Grader).
+
+### Scores
+- **Site Health:** average page cleanliness. Each distinct error on a page costs 35% of that page's score and each warning 8%. Notices don't count. Site-wide problems: no HTTPS −10 points, other site-wide warnings −3.
+- **Thematic reports** (Crawlability, HTTPS, On-page SEO, Internal linking, Performance, Markup) use the same method, limited to each area's issues.
+- **Bot protection:** pages that return a bot check (e.g. Cloudflare's "Just a moment…") are reported once as a notice and left out of every score, so a protected site isn't blamed for problems we couldn't see.
+- **"No response":** links that time out are not reported as broken. Only real 4xx/5xx errors are.
+
+### Saved audits and comparisons (SQLite)
+Audits are saved in Webflow Cloud's SQLite database:
+- `wrangler.json` declares the `DB` binding (`d1_databases`) and points at `./migrations`.
+- `migrations/0001_site_audits.sql` creates the `site_audits` table. Webflow Cloud applies migrations automatically on deploy. Never edit a deployed migration; add `0002_…sql` instead.
+- After the first deploy, Webflow Cloud assigns the real database ID. Copy it from the app's **Storage** tab into `database_id` in `wrangler.json` (replacing `replace-after-first-deploy`) and commit.
+- Each report gets a shareable link (`/site-audit?id=…`). Re-auditing a site shows changes since its last audit: health points, error/warning/notice counts, new issues, and a "Fixed since…" list.
+- If the database isn't connected, audits still run; they just aren't saved or compared.
+
+### Turning it into an internal team tool later
+- Raise the page limit with the `AUDIT_MAX_PAGES` environment variable (hard cap 1000). Don't do this on the public page: put team mode behind a login first.
+- `lib/audit/config.ts` holds all the limits (batch sizes, link-check cap, thresholds for slow pages, thin content, etc.).
 
 ## Google API key for the Website Grader
 

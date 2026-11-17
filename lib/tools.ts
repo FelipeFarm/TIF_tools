@@ -20,4 +20,11 @@ export const TOOLS = [
     short: "Score your site vs. a competitor",
     body: "Get a free score with Google's speed test, an SEO check-up and a Google Business Profile lookup. Compare against a competitor.",
   },
+  {
+    href: "/site-audit",
+    icon: "audit",
+    title: "Site Audit",
+    short: "Crawl your whole site",
+    body: "A full crawl of up to 100 pages: broken links, redirects, duplicate titles, thin content and 40+ other checks, with a Site Health score.",
+  },
 ] as const;
