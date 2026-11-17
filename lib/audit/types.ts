@@ -81,6 +81,9 @@ export interface AuditReport {
   startUrl: string;
   createdAt: string;
   pagesCrawled: number;
+  /** Sitemap coverage: how many sitemap URLs were crawled */
+  sitemapTotal?: number;
+  sitemapCrawled?: number;
   maxPages: number;
   limitReached: boolean;
   health: number;

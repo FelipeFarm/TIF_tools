@@ -6,7 +6,7 @@ Three free lead-gen tools for The Idea Farm, built with Next.js and deployed on 
 |---|---|
 | `/seo-plan-picker` | 6 questions → recommends Starter, Growth or Authority |
 | `/ad-budget-estimator` | Industry + market + budget/leads goal → Google / Meta / LSA split and lead estimate |
-| `/site-audit` | Site Audit (includes the former Website Grader): crawls up to 100 pages, runs Google's speed test, a Google Business Profile lookup and 50+ checks, gives a Site Health score, compares against a competitor, saves each audit and compares re-runs |
+| `/site-audit` | Site Audit (includes the former Website Grader): crawls up to 200 pages, runs Google's speed test, a Google Business Profile lookup and 50+ checks, gives a Site Health score, compares against a competitor, saves each audit and compares re-runs |
 | `/website-grader` | Old link, now redirects to `/site-audit` |
 
 Each tool ends with a lead form that sends the contact plus their answers/results to **GoHighLevel** through an inbound webhook.
@@ -38,7 +38,7 @@ Have the SEO and Ads leads sanity-check these.
    | `GHL_WEBHOOK_URL` | GHL inbound webhook URL (see below) | **Yes** |
    | `NEXT_PUBLIC_BOOKING_URL` | GHL booking calendar link | No |
    | `GOOGLE_API_KEY` | Google Cloud API key for the Website Grader and Site Audit speed tests (see below) | **Yes** |
-   | `AUDIT_MAX_PAGES` | Optional. Pages per Site Audit (default 100). Leave unset for the public tool | No |
+   | `AUDIT_MAX_PAGES` | Optional. Pages per Site Audit (default 200, max 1000). Leave unset for the public tool | No |
 
 4. **Deploy.** Then visit `theideafarm.net/tools` (or the `.webflow.io` URL Webflow gives you).
 
@@ -52,8 +52,8 @@ Have the SEO and Ads leads sanity-check these.
 The in-depth homepage check from the old Website Grader (`/api/grade`: Google speed test, Business Profile lookup, tap-to-call, LocalBusiness schema, and the same for a competitor) runs alongside the crawl. Its findings appear in a **Local & speed snapshot**, a **head-to-head table** when a competitor is entered, a **Local SEO** area score, and these issues: no/unlinked Business Profile, few reviews, no phone / not tap-to-call, no LocalBusiness schema, slow main content (LCP), layout shift (CLS) and slow responsiveness.
 
 1. **Start** (`/api/audit/start`): resolves the real homepage, reads robots.txt and the XML sitemap (including sitemap indexes).
-2. **Crawl** (`/api/audit/crawl`): the visitor's browser drives the crawl, sending 6 URLs at a time. It goes breadth-first from the homepage, then visits sitemap-only URLs. This keeps every server request small (Cloudflare limits outbound requests per request) and shows live progress. It respects robots.txt and slows down automatically when a site starts showing bot checks.
-3. **Link check** (`/api/audit/check-links`): status-checks up to 150 external links, images and internal files.
+2. **Crawl** (`/api/audit/crawl`): the visitor's browser drives the crawl, sending 6 URLs at a time. A priority queue (`lib/audit/crawlQueue.ts`) decides the order: homepage first, then sitemap pages and pages one click deep, then deeper pages, and paginated/query-string URLs last (max 3 per path). Every same-site URL is folded onto the site's real address (www vs non-www, http vs https) before deduping, so variant links never waste the page budget. This keeps every server request small (Cloudflare limits outbound requests per request) and shows live progress. It respects robots.txt and slows down automatically when a site starts showing bot checks.
+3. **Link check** (`/api/audit/check-links`): status-checks up to 250 external links, images and internal files.
 4. **Homepage check** (`/api/grade`): runs in the background during the crawl, for your site and the competitor.
 5. **Finish** (`/api/audit/finish`): builds the report, compares it with the last audit of the same site, and saves it.
 
@@ -63,6 +63,13 @@ The in-depth homepage check from the old Website Grader (`/api/grade`: Google sp
 - **Notices:** orphan pages (only reported when the whole site was crawled), deep pages, pages with one internal link, links to redirects, nofollow internal links, multiple H1s, short titles, no canonical, noindex pages, robots.txt blocks, no robots.txt, bot-protected pages, no lang, no social preview, no schema, speed that needs improvement.
 
 Each issue has a plain-English "why it matters" and "how to fix". Issue names and counts are free; the fixes and affected URLs unlock with the lead form (the same unlock as the Website Grader).
+
+### Accuracy rules
+- **Click depth** is the real shortest path from the homepage (computed over the crawled link graph), not the order pages were found.
+- **Paginated pages** (`/page/2`, `?page=2`, Webflow's `?xxxx_page=2`) and pages canonicalised to another URL are left out of duplicate title/description/content, thin-content and single-link checks: they're meant to look alike.
+- **Host variants:** links or sitemap entries that use the wrong address version (e.g. `site.com` when the site lives at `www.site.com`) count as links to the right page, and are flagged as "links to redirects" / "bad sitemap URLs".
+- **Coverage:** the report shows how many sitemap pages were crawled ("X of Y sitemap pages").
+- **Speed:** Google's lab test varies run to run (a cold first run is often slower); the report notes this.
 
 ### Scores
 - **Site Health:** average page cleanliness. Each distinct error on a page costs 35% of that page's score and each warning 8%. Notices don't count. Site-wide problems: no HTTPS −10 points, other site-wide warnings −3.

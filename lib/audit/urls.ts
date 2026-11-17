@@ -89,3 +89,56 @@ export function isDisallowed(url: string, disallow: string[]): boolean {
     return re.test(p);
   });
 }
+
+/** Pagination URLs: ?page=2, ?p=3, Webflow's ?1304bda0_page=2, /page/2/ */
+export function isPaginated(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (/\/page\/\d+\/?$/i.test(u.pathname)) return true;
+    for (const [k, v] of u.searchParams) if (/(^|[_-])(page|p|pg|paged)$/i.test(k) && /^\d+$/.test(v)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Compare URLs the way canonicals should be compared: ignore protocol, www, trailing slash and case of host */
+export function sameUrl(a: string, b: string): boolean {
+  const norm = (x: string) => {
+    try {
+      const u = new URL(x);
+      return `${bare(u.hostname)}${u.pathname.replace(/\/+$/, "") || "/"}${u.search}`;
+    } catch {
+      return x;
+    }
+  };
+  return norm(a) === norm(b);
+}
+
+/**
+ * Rewrite a same-site URL onto the site's real origin (e.g. http://acme.com/x -> https://www.acme.com/x),
+ * so www/non-www and http/https variants are crawled once. Other URLs are returned unchanged.
+ */
+export function toOrigin(url: string, origin: string): string {
+  try {
+    const u = new URL(url);
+    const o = new URL(origin);
+    if (bare(u.hostname) !== bare(o.hostname)) return url;
+    u.protocol = o.protocol;
+    u.host = o.host;
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/** True when a same-site link uses a different host/protocol than the site's real origin (so it redirects) */
+export function isOffOrigin(url: string, origin: string): boolean {
+  try {
+    const u = new URL(url);
+    const o = new URL(origin);
+    return bare(u.hostname) === bare(o.hostname) && (u.host !== o.host || u.protocol !== o.protocol);
+  } catch {
+    return false;
+  }
+}

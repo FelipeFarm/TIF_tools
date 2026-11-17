@@ -19,6 +19,6 @@ export const TOOLS = [
     icon: "audit",
     title: "Site Audit",
     short: "Speed, SEO & local check-up",
-    body: "Crawl up to 100 pages and run Google's speed test, a Business Profile lookup and 50+ checks. Get a Site Health score and compare against a competitor.",
+    body: "Crawl up to 200 pages and run Google's speed test, a Business Profile lookup and 50+ checks. Get a Site Health score and compare against a competitor.",
   },
 ] as const;

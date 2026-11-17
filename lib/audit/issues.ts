@@ -1,6 +1,6 @@
 import { DEEP_DEPTH, LARGE_HTML_BYTES, LOW_WORDS, MAX_AFFECTED, SLOW_MS } from "./config";
 import { THEMES, type AffectedUrl, type HomepageReport, type AuditReport, type Issue, type LinkStatus, type PageRecord, type Severity, type SiteInfo, type SpeedSummary, type Theme } from "./types";
-import { isInternal, pathOf } from "./urls";
+import { isInternal, isOffOrigin, isPaginated, pathOf, sameUrl, toOrigin } from "./urls";
 
 interface Def {
   id: string;
@@ -124,14 +124,50 @@ export function buildReport(input: {
   const seenFinal = new Set<string>();
   const uniqueOk = ok.filter((p) => (seenFinal.has(p.finalUrl) ? false : (seenFinal.add(p.finalUrl), true)));
 
+  // Same-site links may use another host variant (no www, http). Treat them as the page they redirect to.
+  const L = (u: string) => toOrigin(u, site.origin);
+
+  /* ── Real click depth: shortest path from the homepage through the links we found ──
+     (independent of crawl order, which prioritizes sitemap pages) */
+  const finalOf = new Map<string, string>();
+  for (const p of pages) finalOf.set(p.url, p.finalUrl);
+  const byFinal = new Map(uniqueOk.map((p) => [p.finalUrl, p]));
+  const home = byFinal.get(site.startUrl) ?? uniqueOk.find((p) => p.depth === 0);
+  const depthOf = new Map<string, number>();
+  if (home) {
+    depthOf.set(home.finalUrl, 0);
+    let frontier = [home];
+    while (frontier.length) {
+      const next: PageRecord[] = [];
+      for (const p of frontier) {
+        const d = depthOf.get(p.finalUrl)!;
+        for (const l of p.internalLinks ?? []) {
+          const target = byFinal.get(finalOf.get(L(l.url)) ?? L(l.url));
+          if (target && !depthOf.has(target.finalUrl)) {
+            depthOf.set(target.finalUrl, d + 1);
+            next.push(target);
+          }
+        }
+      }
+      frontier = next;
+    }
+  }
+  const clickDepth = (p: PageRecord): number | null => depthOf.get(p.finalUrl) ?? null;
+
+  /* Pages Google won't treat as standalone: pagination, and pages canonicalized to another URL.
+     They're excluded from duplicate and thin-content checks. */
+  const canonicalizedAway = (p: PageRecord) => !!p.canonical && !sameUrl(p.canonical, p.finalUrl);
+  const secondary = (p: PageRecord) => isPaginated(p.finalUrl) || isPaginated(p.url) || canonicalizedAway(p);
+
   // Incoming internal links
   const inlinks = new Map<string, Set<string>>();
   for (const p of uniqueOk) {
     for (const l of p.internalLinks ?? []) {
-      if (l.url === p.finalUrl) continue;
-      const set = inlinks.get(l.url) ?? new Set();
+      const key = finalOf.get(L(l.url)) ?? L(l.url);
+      if (key === p.finalUrl) continue;
+      const set = inlinks.get(key) ?? new Set();
       set.add(p.finalUrl);
-      inlinks.set(l.url, set);
+      inlinks.set(key, set);
     }
   }
   const inCount = (p: PageRecord) => new Set([...(inlinks.get(p.url) ?? []), ...(inlinks.get(p.finalUrl) ?? [])]).size;
@@ -147,12 +183,14 @@ export function buildReport(input: {
   }
 
   /* ── Sitemap quality ── */
-  const sitemapSet = new Set(site.sitemap.urls);
+  // Sitemap URLs folded onto the real origin, so a sitemap that lists non-www/http URLs still matches the crawl
+  const sitemapSet = new Set(site.sitemap.urls.map((u) => toOrigin(u, site.origin)));
   for (const p of pages) {
     if (sitemapSet.has(p.url) && (p.status !== 200 || p.redirects.length)) {
       add("sitemap_bad_urls", p.url, p.redirects.length ? `Redirects (${p.redirects[0].status})` : `${p.status || "No response"}`);
     }
   }
+  for (const u of site.sitemap.urls) if (isOffOrigin(u, site.origin)) add("sitemap_bad_urls", u, "Wrong address version (redirects)");
 
   /* ── Page-level content checks ── */
   const byTitle = new Map<string, PageRecord[]>();
@@ -166,14 +204,14 @@ export function buildReport(input: {
     else {
       if (t.length > 65) add("title_too_long", p.finalUrl, `${t.length} chars`);
       if (t.length < 25) add("title_too_short", p.finalUrl, `${t.length} chars`);
-      if (!p.noindex) byTitle.set(t.toLowerCase(), [...(byTitle.get(t.toLowerCase()) ?? []), p]);
+      if (!p.noindex && !secondary(p)) byTitle.set(t.toLowerCase(), [...(byTitle.get(t.toLowerCase()) ?? []), p]);
     }
     if (!d) add("missing_description", p.finalUrl);
-    else if (!p.noindex) byDesc.set(d.toLowerCase(), [...(byDesc.get(d.toLowerCase()) ?? []), p]);
-    if (p.textHash && !p.noindex) byHash.set(p.textHash, [...(byHash.get(p.textHash) ?? []), p]);
+    else if (!p.noindex && !secondary(p)) byDesc.set(d.toLowerCase(), [...(byDesc.get(d.toLowerCase()) ?? []), p]);
+    if (p.textHash && !p.noindex && !secondary(p)) byHash.set(p.textHash, [...(byHash.get(p.textHash) ?? []), p]);
     if (h1.length === 0) add("missing_h1", p.finalUrl);
     else if (h1.length > 1) add("multiple_h1", p.finalUrl, `${h1.length} H1s`);
-    if (!p.noindex && (p.words ?? 0) < LOW_WORDS) add("low_word_count", p.finalUrl, `${p.words ?? 0} words`);
+    if (!p.noindex && !secondary(p) && (p.words ?? 0) < LOW_WORDS) add("low_word_count", p.finalUrl, `${p.words ?? 0} words`);
     const noAlt = (p.images ?? []).filter((i) => !i.alt).length;
     if (noAlt) add("missing_alt", p.finalUrl, `${noAlt} image${noAlt === 1 ? "" : "s"}`);
     if (p.ms > SLOW_MS) add("slow_pages", p.finalUrl, `${(p.ms / 1000).toFixed(1)}s`);
@@ -188,8 +226,8 @@ export function buildReport(input: {
     if (!p.hasSchema) add("missing_schema", p.finalUrl);
 
     // Links
-    const brokenInt = (p.internalLinks ?? []).filter((l) => isBroken(l.url));
-    if (brokenInt.length) add("broken_internal_links", p.finalUrl, brokenInt.slice(0, 3).map((l) => `→ ${pathOf(l.url)} (${status.get(l.url) || "no response"})`).join(", ") + (brokenInt.length > 3 ? ` +${brokenInt.length - 3} more` : ""));
+    const brokenInt = (p.internalLinks ?? []).filter((l) => isBroken(l.url) || isBroken(L(l.url)));
+    if (brokenInt.length) add("broken_internal_links", p.finalUrl, brokenInt.slice(0, 3).map((l) => `→ ${pathOf(l.url)} (${status.get(l.url) ?? status.get(L(l.url)) ?? "no response"})`).join(", ") + (brokenInt.length > 3 ? ` +${brokenInt.length - 3} more` : ""));
     const brokenExt = (p.externalLinks ?? []).filter((u) => isBroken(u));
     if (brokenExt.length) add("broken_external_links", p.finalUrl, brokenExt.slice(0, 2).map((u) => `→ ${u} (${status.get(u) || "no response"})`).join(", ") + (brokenExt.length > 2 ? ` +${brokenExt.length - 2} more` : ""));
     const brokenImg = (p.images ?? []).filter((i) => isBroken(i.src));
@@ -198,18 +236,20 @@ export function buildReport(input: {
       const httpLinks = (p.internalLinks ?? []).filter((l) => l.url.startsWith("http:"));
       if (httpLinks.length) add("links_to_http", p.finalUrl, `${httpLinks.length} link${httpLinks.length === 1 ? "" : "s"}`);
     }
-    const toRedirect = (p.internalLinks ?? []).filter((l) => redirected.has(l.url) && !l.url.startsWith("http:"));
+    // Links that go through a redirect: to a URL we saw redirect, or to another host variant (no www, etc.)
+    const toRedirect = (p.internalLinks ?? []).filter((l) => !l.url.startsWith("http:") && (redirected.has(L(l.url)) || isOffOrigin(l.url, site.origin)));
     if (toRedirect.length) add("links_to_redirects", p.finalUrl, `${toRedirect.length} link${toRedirect.length === 1 ? "" : "s"}`);
     const nofollow = (p.internalLinks ?? []).filter((l) => l.nofollow).length;
     if (nofollow) add("nofollow_internal", p.finalUrl, `${nofollow} link${nofollow === 1 ? "" : "s"}`);
 
-    // Structure
-    const home = p.depth === 0;
+    // Structure (click depth from the link graph)
+    const depth = clickDepth(p);
+    const isHome = depth === 0;
     const incoming = inCount(p);
     // Orphans are only reliable when the whole site was crawled
-    if (!home && !input.limitReached && sitemapSet.has(p.url) && incoming === 0) add("orphan_pages", p.finalUrl);
-    else if (!home && incoming === 1) add("single_inlink", p.finalUrl);
-    if (p.depth !== null && p.depth > DEEP_DEPTH) add("deep_pages", p.finalUrl, `${p.depth} clicks`);
+    if (!isHome && !input.limitReached && sitemapSet.has(p.url) && incoming === 0) add("orphan_pages", p.finalUrl);
+    else if (!isHome && !isPaginated(p.finalUrl) && incoming === 1) add("single_inlink", p.finalUrl);
+    if (depth !== null && depth > DEEP_DEPTH) add("deep_pages", p.finalUrl, `${depth} clicks`);
   }
   for (const [, group] of byTitle) if (group.length > 1) group.forEach((p) => add("duplicate_title", p.finalUrl, `Same as ${group.length - 1} other page${group.length > 2 ? "s" : ""}`));
   for (const [, group] of byDesc) if (group.length > 1) group.forEach((p) => add("duplicate_description", p.finalUrl, `Same as ${group.length - 1} other page${group.length > 2 ? "s" : ""}`));
@@ -343,7 +383,7 @@ export function buildReport(input: {
       return {
         url: key,
         status: p.status,
-        depth: p.depth,
+        depth: p.status === 200 && !p.challenge ? clickDepth(p) : p.depth,
         ms: p.ms,
         title: p.challenge ? "(bot check — not audited)" : (p.title ?? ""),
         words: p.words ?? 0,
@@ -358,6 +398,11 @@ export function buildReport(input: {
     host: site.host,
     startUrl: site.startUrl,
     pagesCrawled: pages.length,
+    sitemapTotal: site.sitemap.urls.length,
+    sitemapCrawled: (() => {
+      const crawledSet = new Set(pages.flatMap((p) => [p.url, p.finalUrl]));
+      return site.sitemap.urls.filter((u) => crawledSet.has(u) || crawledSet.has(toOrigin(u, site.origin))).length;
+    })(),
     maxPages: input.maxPages,
     limitReached: input.limitReached,
     health,

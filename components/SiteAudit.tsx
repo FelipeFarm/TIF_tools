@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import LeadForm from "./LeadForm";
 import { withBase, BOOKING_URL } from "@/lib/basePath";
 import { ISSUE_INFO } from "@/lib/audit/issues";
-import { isDisallowed, isInternal, looksLikeHtml, pathOf } from "@/lib/audit/urls";
+import { looksLikeHtml, pathOf, toOrigin } from "@/lib/audit/urls";
+import { CrawlQueue } from "@/lib/audit/crawlQueue";
 import type { AuditReport, HomepageReport, Issue, LinkStatus, PageRecord, Severity, SiteInfo, SpeedSummary } from "@/lib/audit/types";
 
 const UNLOCK_KEY = "tif_grader_unlocked"; // same key the old Website Grader used, so people who already unlocked stay unlocked
@@ -146,39 +147,21 @@ export default function SiteAudit() {
           return null;
         });
 
-      /* ── Crawl (breadth-first from the homepage, then sitemap-only URLs) ── */
+      /* ── Crawl in priority order so the pages that matter are never skipped:
+         0 homepage · 1 pages linked from the homepage + every sitemap page · 2 two clicks deep
+         3 deeper pages · 4 pagination/filter URLs (max a few per listing). Click depth itself is
+         computed from the link graph afterwards, so this order doesn't distort it. ── */
       setPhase("crawling");
-      const seen = new Set<string>([site.startUrl]);
-      const queue: { url: string; depth: number | null }[] = [{ url: site.startUrl, depth: 0 }];
-      const sitemapLeft = site.sitemap.urls.filter((u) => looksLikeHtml(u));
+      const queue = new CrawlQueue(site.host, site.robots.disallow, site.sitemap.urls, site.origin);
       const pages: PageRecord[] = [];
-      const blocked: string[] = [];
+      const blocked = queue.blocked;
       let broken = 0;
-      const enqueue = (u: string, depth: number | null) => {
-        if (seen.has(u)) return;
-        seen.add(u);
-        if (!isInternal(u, site.host) || !looksLikeHtml(u)) return;
-        if (isDisallowed(u, site.robots.disallow)) {
-          if (blocked.length < 500) blocked.push(u);
-          return;
-        }
-        queue.push({ url: u, depth });
-      };
+      queue.add(site.startUrl, 0);
+      for (const u of site.sitemap.urls) queue.add(u, null);
 
-      while (pages.length < max && !cancelled.current) {
-        if (!queue.length) {
-          // Nothing left to follow: crawl sitemap URLs nobody links to (orphan candidates)
-          while (sitemapLeft.length && queue.length < limits.crawlBatch * 2) {
-            const u = sitemapLeft.shift()!;
-            if (!seen.has(u) && !isDisallowed(u, site.robots.disallow)) {
-              seen.add(u);
-              queue.push({ url: u, depth: null });
-            }
-          }
-          if (!queue.length) break;
-        }
+      while (pages.length < max && !cancelled.current && queue.size) {
         // One batch at a time keeps the crawl gentle on small business hosts
-        const batch = queue.splice(0, Math.min(limits.crawlBatch, max - pages.length));
+        const batch = queue.next(Math.min(limits.crawlBatch, max - pages.length));
         setProg((p) => ({ ...p, current: batch[0]?.url || p.current }));
         const results = await post<{ pages: PageRecord[] }>("/api/audit/crawl", { host: site.host, pages: batch })
           .then((d) => d.pages)
@@ -187,12 +170,12 @@ export default function SiteAudit() {
         for (const rec of results) {
           if (pages.length >= max) break;
           pages.push(rec);
-          seen.add(rec.finalUrl);
+          queue.markSeen(rec.finalUrl);
           if (rec.challenge) challenged++;
           if (rec.status >= 400 || rec.status === 0) broken++;
           if (rec.status === 200 && rec.internalLinks) {
-            const next = rec.depth === null ? null : rec.depth + 1;
-            for (const l of rec.internalLinks) enqueue(l.url, next);
+            const next = rec.depth === null ? 2 : rec.depth + 1;
+            for (const l of rec.internalLinks) queue.add(l.url, next);
           }
         }
         // The site started showing bot checks: slow down
@@ -200,7 +183,7 @@ export default function SiteAudit() {
         setProg((p) => ({ ...p, crawled: pages.length, broken }));
       }
       if (cancelled.current) return;
-      const limitReached = pages.length >= max && (queue.length > 0 || sitemapLeft.some((u) => !seen.has(u)));
+      const limitReached = pages.length >= max && queue.size > 0;
 
       /* ── Check external links, images and internal files ── */
       setPhase("links");
@@ -209,7 +192,11 @@ export default function SiteAudit() {
       const images = new Set<string>();
       const external = new Set<string>();
       for (const p of pages) {
-        for (const l of p.internalLinks ?? []) if (!crawled.has(l.url) && !looksLikeHtml(l.url)) internalFiles.add(l.url);
+        // Internal files (PDFs etc.) and, if the page limit was hit, internal pages we didn't crawl
+        for (const l of p.internalLinks ?? []) {
+          const u = toOrigin(l.url, site.origin);
+          if (!crawled.has(u) && !crawled.has(l.url) && !blocked.includes(u)) internalFiles.add(u);
+        }
         for (const i of p.images ?? []) images.add(i.src);
         for (const e of p.externalLinks ?? []) external.add(e);
       }
@@ -357,7 +344,7 @@ export default function SiteAudit() {
           </button>
         </div>
         <p className="hint" style={{ marginTop: 10, marginBottom: 0 }}>
-          We crawl up to 100 pages, run Google&apos;s speed test and 50+ checks. Most sites finish in 1–2 minutes.
+          We crawl up to 200 pages, run Google&apos;s speed test and 50+ checks. Most sites finish in 1–3 minutes.
         </p>
         {error && <p className="error">{error}</p>}
 
@@ -434,6 +421,7 @@ export default function SiteAudit() {
             <h2 style={{ margin: "10px 0 2px", wordBreak: "break-all" }}>{r.host}</h2>
             <p className="note" style={{ margin: 0 }}>
               {fmtDate(r.createdAt)} · {r.pagesCrawled} pages crawled
+              {r.sitemapTotal ? ` · ${r.sitemapCrawled} of ${r.sitemapTotal} sitemap pages` : ""}
               {r.limitReached ? ` (limit of ${r.maxPages} reached)` : ""}
               {c ? ` · compared with ${fmtDate(c.prevDate)}` : ""}
             </p>
@@ -749,6 +737,11 @@ function Snapshot({ you, them, compError }: { you: HomepageReport; them: Homepag
               <div className="snap-sub">
                 Main content in {secs(lcp)}
                 {sp.field ? ` · real visitors: ${sp.field.category.toLowerCase()}` : ""}
+              </div>
+              <div className="snap-note">
+                {sp.field
+                  ? "Load time is from real Chrome visitors over the last 28 days. The score is Google's lab test on a mid-range phone and can vary a few points between runs."
+                  : "Google's lab test on a mid-range phone. Lab scores can vary by up to ~10 points between runs; Google doesn't have enough real-visitor data for this site yet."}
               </div>
             </>
           ) : (
