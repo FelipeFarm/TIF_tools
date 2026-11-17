@@ -24,6 +24,10 @@ export interface SpeedData {
   cls: number | null;
   tbtMs: number | null;
   fcpMs: number | null;
+  /** Every lab score we got (we run the test several times and keep the median run) */
+  runs?: number[];
+  /** Same test with Google's desktop settings (median run) */
+  desktop?: SpeedData | null;
   /** Real-user (Chrome UX Report) data, when Google has enough traffic for the URL */
   field: { category: string; lcpMs: number | null; inpMs: number | null; cls: number | null } | null;
 }

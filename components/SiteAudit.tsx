@@ -7,6 +7,7 @@ import { ISSUE_INFO } from "@/lib/audit/issues";
 import { looksLikeHtml, pathOf, toOrigin } from "@/lib/audit/urls";
 import { CrawlQueue } from "@/lib/audit/crawlQueue";
 import type { AuditReport, HomepageReport, Issue, LinkStatus, PageRecord, Severity, SiteInfo, SpeedSummary } from "@/lib/audit/types";
+import type { SpeedData } from "@/lib/grader/types";
 
 const UNLOCK_KEY = "tif_grader_unlocked"; // same key the old Website Grader used, so people who already unlocked stay unlocked
 const SEV_LABEL: Record<Severity, string> = { error: "Errors", warning: "Warnings", notice: "Notices" };
@@ -492,7 +493,7 @@ export default function SiteAudit() {
               <span className="v">{r.pagesCrawled}</span>
               {r.speed && (
                 <span className="delta same">
-                  Mobile speed {r.speed.performance}/100
+                  Speed {r.speed.performance} mobile{r.homepage?.speed?.desktop ? ` · ${r.homepage.speed.desktop.performance} desktop` : ""}
                 </span>
               )}
             </div>
@@ -517,6 +518,7 @@ export default function SiteAudit() {
 
       {/* ── Local & speed snapshot (in-depth homepage check) ── */}
       {r.homepage && <Snapshot you={r.homepage} them={r.competitor ?? null} compError={compError} />}
+      {r.homepage?.speed && <SpeedSection speed={r.homepage.speed} />}
 
       {/* ── Tabs ── */}
       <div className="card mt">
@@ -711,6 +713,57 @@ export default function SiteAudit() {
 /* ───────────── Local & speed snapshot + head-to-head ───────────── */
 
 const secs = (ms: number | null | undefined) => (ms == null ? "—" : `${(ms / 1000).toFixed(1)}s`);
+/* Google's own thresholds (good / needs improvement / poor), same colours as PageSpeed Insights */
+const tone = (v: number | null | undefined, good: number, poor: number) =>
+  v == null ? "var(--muted)" : v <= good ? "var(--good)" : v <= poor ? "#b07a00" : "#d93636";
+const scoreTone = (p: number) => (p >= 90 ? "var(--good)" : p >= 50 ? "#b07a00" : "#d93636");
+
+function SpeedPanel({ label, d, device }: { label: string; d: SpeedData; device: "mobile" | "desktop" }) {
+  const rows: [string, string, string][] = [
+    ["First content", secs(d.fcpMs), tone(d.fcpMs, device === "mobile" ? 1800 : 900, device === "mobile" ? 3000 : 1600)],
+    ["Main content (LCP)", secs(d.lcpMs), tone(d.lcpMs, device === "mobile" ? 2500 : 1200, device === "mobile" ? 4000 : 2400)],
+    ["Blocking time", d.tbtMs == null ? "—" : `${Math.round(d.tbtMs)}ms`, tone(d.tbtMs, device === "mobile" ? 200 : 150, device === "mobile" ? 600 : 350)],
+    ["Layout shift (CLS)", d.cls == null ? "—" : d.cls.toFixed(2), tone(d.cls, 0.1, 0.25)],
+  ];
+  return (
+    <div className="snap-box">
+      <div className="snap-k">{label}</div>
+      <div className="snap-v" style={{ color: scoreTone(d.performance) }}>
+        {d.performance}
+        <small>/100</small>
+      </div>
+      <ul className="speed-rows">
+        {rows.map(([k, v, c]) => (
+          <li key={k}>
+            <span>{k}</span>
+            <b style={{ color: c }}>{v}</b>
+          </li>
+        ))}
+      </ul>
+      {d.runs && d.runs.length > 1 && <div className="snap-note">Middle of {d.runs.length} runs (scores: {d.runs.join(", ")})</div>}
+    </div>
+  );
+}
+
+function SpeedSection({ speed }: { speed: SpeedData }) {
+  return (
+    <div className="card mt">
+      <h2>Speed: mobile vs desktop</h2>
+      <p className="note" style={{ marginTop: -4 }}>
+        Google&apos;s PageSpeed test on your homepage, the same test as pagespeed.web.dev. Mobile simulates a mid-range phone on slow 4G, so it&apos;s always lower than
+        desktop. Google ranks mobile-first, so the mobile score matters most.
+      </p>
+      <div className="snap speed-grid">
+        <SpeedPanel label="Mobile" d={speed} device="mobile" />
+        {speed.desktop ? <SpeedPanel label="Desktop" d={speed.desktop} device="desktop" /> : <div className="snap-box"><div className="snap-k">Desktop</div><div className="snap-sub">Google&apos;s desktop test didn&apos;t finish this time.</div></div>}
+      </div>
+      {speed.field && (
+        <p className="note">Real Chrome visitors over the last 28 days rate this site&apos;s speed as <b>{speed.field.category.toLowerCase()}</b>.</p>
+      )}
+    </div>
+  );
+}
+
 const hc = (r: HomepageReport, id: string) => r.checks.find((c) => c.id === id);
 
 function Snapshot({ you, them, compError }: { you: HomepageReport; them: HomepageReport | null; compError: string }) {
@@ -727,7 +780,7 @@ function Snapshot({ you, them, compError }: { you: HomepageReport; them: Homepag
       </p>
       <div className="snap">
         <div className="snap-box">
-          <div className="snap-k">Google mobile speed</div>
+          <div className="snap-k">Google speed (mobile)</div>
           {sp ? (
             <>
               <div className="snap-v" style={{ color: sp.performance >= 90 ? "var(--good)" : sp.performance >= 50 ? "#b07a00" : "#d93636" }}>
@@ -738,10 +791,12 @@ function Snapshot({ you, them, compError }: { you: HomepageReport; them: Homepag
                 Main content in {secs(lcp)}
                 {sp.field ? ` · real visitors: ${sp.field.category.toLowerCase()}` : ""}
               </div>
+              {sp.desktop && <div className="snap-sub">Desktop: {sp.desktop.performance}/100 · details in Speed below</div>}
               <div className="snap-note">
-                {sp.field
-                  ? "Load time is from real Chrome visitors over the last 28 days. The score is Google's lab test on a mid-range phone and can vary a few points between runs."
-                  : "Google's lab test on a mid-range phone. Lab scores can vary by up to ~10 points between runs; Google doesn't have enough real-visitor data for this site yet."}
+                {(sp.runs && sp.runs.length > 1 ? `Middle of ${sp.runs.length} runs of Google's PageSpeed test (mobile scores: ${sp.runs.join(", ")}). Mobile is tested on a mid-range phone with slow 4G, so it's always lower than desktop. ` : "Google's lab test on a mid-range phone. ") +
+                  (sp.field
+                    ? "Load time is from real Chrome visitors over the last 28 days."
+                    : "Lab scores swing between runs, so expect PageSpeed Insights to show a slightly different number; Google doesn't have enough real-visitor data for this site yet.")}
               </div>
             </>
           ) : (

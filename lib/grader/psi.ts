@@ -35,8 +35,22 @@ export function parsePsi(json: any): SpeedData | null {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export async function runPsi(url: string, apiKey?: string): Promise<{ data: SpeedData | null; error?: string }> {
-  const qs = new URLSearchParams({ url, strategy: "mobile", category: "performance" });
+/** Google's lab score swings a lot between runs (we've seen 44 and 78 for the same page minutes apart),
+ *  so run it several times at once and report the median run, like Google recommends. */
+export const PSI_RUNS = 3;
+export async function runPsi(url: string, apiKey?: string, strategy: "mobile" | "desktop" = "mobile"): Promise<{ data: SpeedData | null; error?: string }> {
+  const results = await Promise.all(
+    Array.from({ length: PSI_RUNS }, (_, i) => new Promise((r) => setTimeout(r, i * 1500)).then(() => runPsiOnce(url, apiKey, strategy))),
+  );
+  const ok = results.map((r) => r.data).filter((d): d is SpeedData => !!d);
+  if (!ok.length) return { data: null, error: results[0].error };
+  ok.sort((a, b) => a.performance - b.performance);
+  const median = ok[Math.floor((ok.length - 1) / 2)];
+  return { data: { ...median, runs: ok.map((d) => d.performance) } };
+}
+
+async function runPsiOnce(url: string, apiKey: string | undefined, strategy: "mobile" | "desktop"): Promise<{ data: SpeedData | null; error?: string }> {
+  const qs = new URLSearchParams({ url, strategy, category: "performance" });
   if (apiKey) qs.set("key", apiKey);
   try {
     const res = await timedFetch(`${PSI_ENDPOINT()}?${qs}`, 55_000);

@@ -69,7 +69,7 @@ Each issue has a plain-English "why it matters" and "how to fix". Issue names an
 - **Paginated pages** (`/page/2`, `?page=2`, Webflow's `?xxxx_page=2`) and pages canonicalised to another URL are left out of duplicate title/description/content, thin-content and single-link checks: they're meant to look alike.
 - **Host variants:** links or sitemap entries that use the wrong address version (e.g. `site.com` when the site lives at `www.site.com`) count as links to the right page, and are flagged as "links to redirects" / "bad sitemap URLs".
 - **Coverage:** the report shows how many sitemap pages were crawled ("X of Y sitemap pages").
-- **Speed:** Google's lab test varies run to run (a cold first run is often slower); the report notes this.
+- **Speed:** Google's lab test swings a lot between runs (we saw 44 and 78 for the same homepage minutes apart), so the audit runs PageSpeed 3 times for mobile and 3 times for desktop in parallel and reports the middle run of each, with all scores shown. The **Speed: mobile vs desktop** section shows both scores plus First content, LCP, Blocking time and CLS, coloured with Google's own thresholds. The PSI API is free (25,000 requests/day), and each audit uses 6, or 12 with a competitor.
 
 ### Scores
 - **Site Health:** average page cleanliness. Each distinct error on a page costs 35% of that page's score and each warning 8%. Notices don't count. Site-wide problems: no HTTPS −10 points, other site-wide warnings −3.

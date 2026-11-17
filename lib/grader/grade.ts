@@ -54,6 +54,7 @@ export async function gradeSite(input: string, opts: { businessName?: string } =
 
   // Google's speed test is the slow part (10–40s), so start it first
   const psiPromise = runPsi(url.toString(), key);
+  const desktopPromise = runPsi(url.toString(), key, "desktop");
 
   const { html, finalUrl, ms } = await fetchPage(url);
   const origin = `${finalUrl.protocol}//${finalUrl.host}`;
@@ -84,7 +85,8 @@ export async function gradeSite(input: string, opts: { businessName?: string } =
   }
   const gbpPromise = key ? findGbp(finalUrl.hostname, query, userNamed, key) : Promise.resolve(null);
 
-  const [psi, gbp] = await Promise.all([psiPromise, gbpPromise]);
+  const [psi, gbp, desk] = await Promise.all([psiPromise, gbpPromise, desktopPromise]);
+  if (psi.data) psi.data.desktop = desk.data ? { ...desk.data, field: null } : null;
   if (psi.data) checks.push(...speedChecks(psi.data));
   if (gbp) checks.push(gbpCheck(gbp));
 
